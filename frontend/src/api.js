@@ -1,10 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const BACKEND_URL =
+  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-});
+const API_BASE_URL = `${BACKEND_URL.replace(/\/$/, '')}/api`;
 
 // Request interceptor to attach JWT authorization token if present
 api.interceptors.request.use(
