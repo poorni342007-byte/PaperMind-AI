@@ -28,7 +28,15 @@ app = FastAPI(
 
 # CORS configurations for frontend communication
 # Vite React app defaults to port 5173, fallback to 3000
+import os
+
+frontend_url = os.getenv(
+    "FRONTEND_URL",
+    "https://papermind-ai-f2ed.onrender.com"
+)
+
 origins = [
+    frontend_url,
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
