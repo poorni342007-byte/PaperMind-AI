@@ -1,4 +1,6 @@
 import os
+import gc
+import traceback
 import numpy as np
 from typing import List
 from dotenv import load_dotenv
@@ -23,11 +25,14 @@ class EmbeddingService:
         if cls._model is None and not cls._use_gemini_fallback:
             try:
                 print(f"[EmbeddingService] Attempting to load local model '{MODEL_NAME}'...")
+                import torch
+                torch.set_num_threads(1)
                 from sentence_transformers import SentenceTransformer
                 cls._model = SentenceTransformer(MODEL_NAME)
                 print(f"[EmbeddingService] Local model '{MODEL_NAME}' loaded successfully!")
             except Exception as e:
                 print(f"[EmbeddingService] Could not load SentenceTransformer ({e}).")
+                traceback.print_exc()
                 print(f"[EmbeddingService] Falling back to Gemini API embeddings ('{GEMINI_EMBEDDING_MODEL}').")
                 cls._use_gemini_fallback = True
 
@@ -71,15 +76,26 @@ class EmbeddingService:
             return cls._generate_gemini_embeddings(texts)
 
         try:
-            embeddings = cls._model.encode(
-                texts,
-                show_progress_bar=False,
-                normalize_embeddings=True
-            )
-            return np.array(embeddings, dtype=np.float32)
+            BATCH_SIZE = 16
+            all_embs = []
+            for i in range(0, len(texts), BATCH_SIZE):
+                batch = texts[i:i + BATCH_SIZE]
+                batch_emb = cls._model.encode(
+                    batch,
+                    show_progress_bar=False,
+                    normalize_embeddings=True
+                )
+                all_embs.append(np.array(batch_emb, dtype=np.float32))
+                del batch_emb
+            result = np.vstack(all_embs) if all_embs else np.empty((0, 384), dtype=np.float32)
+            del all_embs
+            gc.collect()
+            return result
         except Exception as e:
             print(f"[EmbeddingService] Error generating local embeddings: {e}. Switching to Gemini fallback.")
+            traceback.print_exc()
             cls._use_gemini_fallback = True
+            gc.collect()
             return cls._generate_gemini_embeddings(texts)
 
     @classmethod

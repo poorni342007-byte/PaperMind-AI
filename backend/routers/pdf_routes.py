@@ -1,4 +1,5 @@
 import os
+import traceback
 import shutil
 import glob
 from datetime import datetime
@@ -55,7 +56,31 @@ async def upload_pdf(file: UploadFile = File(...), current_user: dict = Depends(
     doc_id_str = str(result.inserted_id)
     
     # Index document with page-aware structured chunking, vector store, and reranker prep
-    index_document_file(doc_id_str, file_path)
+    try:
+        success = index_document_file(doc_id_str, file_path)
+        if not success:
+            raise RuntimeError("Indexing returned failure status")
+    except Exception as e:
+        traceback.print_exc()
+        # Clean up the DB record since indexing failed
+        await documents_collection.delete_one({"_id": result.inserted_id})
+        # Clean up the saved file
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"PDF indexing failed: {str(e)}"
+        )
+    finally:
+        # Clean up the temp PDF file (FAISS index is saved separately in indices/)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
     
     return DocumentResponse(
         id=doc_id_str,

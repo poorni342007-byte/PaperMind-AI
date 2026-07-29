@@ -1,3 +1,4 @@
+import traceback
 from typing import List, Dict, Any
 
 RERANKER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
@@ -19,11 +20,14 @@ class RerankerService:
             cls._load_attempted = True
             print(f"[RerankerService] Loading CrossEncoder model '{RERANKER_MODEL_NAME}'...")
             try:
+                import torch
+                torch.set_num_threads(1)
                 from sentence_transformers import CrossEncoder
                 cls._model = CrossEncoder(RERANKER_MODEL_NAME)
                 print(f"[RerankerService] Model '{RERANKER_MODEL_NAME}' loaded successfully!")
             except Exception as e:
                 print(f"[RerankerService] Error loading CrossEncoder model: {e}")
+                traceback.print_exc()
                 print("[RerankerService] Will fall back to vector retrieval scoring.")
                 cls._model = None
         return cls._model

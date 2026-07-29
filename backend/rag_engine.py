@@ -1,6 +1,8 @@
 import os
+import gc
 import json
 import asyncio
+import traceback
 import numpy as np
 import google.generativeai as genai
 from typing import List, Dict, Any
@@ -42,9 +44,11 @@ def index_document_file(document_id: str, file_path: str) -> bool:
         txt_path = os.path.join(INDEX_DIR, f"{document_id}.txt")
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(full_text)
+        del full_text  # Release full text string
 
         # 2. Chunk text with page metadata
         chunks_metadata = ChunkingService.chunk_pages(pages=pages, document_id=document_id)
+        del pages  # Release pages list
         if not chunks_metadata:
             chunks_metadata = [{
                 "chunk_id": 0,
@@ -57,6 +61,7 @@ def index_document_file(document_id: str, file_path: str) -> bool:
         # 3. Generate embeddings
         chunk_texts = [c["text"] for c in chunks_metadata]
         embeddings = EmbeddingService.generate_embeddings(chunk_texts)
+        del chunk_texts  # Release chunk text list
 
         # 4. Build and save FAISS index & metadata
         success = VectorStoreService.build_and_save_index(
@@ -64,11 +69,15 @@ def index_document_file(document_id: str, file_path: str) -> bool:
             embeddings=embeddings,
             chunks_metadata=chunks_metadata
         )
+        del embeddings  # Release embeddings array
+        gc.collect()
 
         print(f"[RAG Facade] Structured indexing completed for doc {document_id}. Chunks: {len(chunks_metadata)}")
         return success
     except Exception as e:
         print(f"[RAG Facade] Error indexing document file {document_id}: {e}")
+        traceback.print_exc()
+        gc.collect()
         return False
 
 def index_document_text(document_id: str, text: str) -> bool:
@@ -84,16 +93,23 @@ def index_document_text(document_id: str, text: str) -> bool:
             f.write(text)
 
         chunks_metadata = ChunkingService.chunk_pages(pages=pages, document_id=document_id)
+        del pages
         chunk_texts = [c["text"] for c in chunks_metadata]
         embeddings = EmbeddingService.generate_embeddings(chunk_texts)
+        del chunk_texts
 
-        return VectorStoreService.build_and_save_index(
+        success = VectorStoreService.build_and_save_index(
             document_id=document_id,
             embeddings=embeddings,
             chunks_metadata=chunks_metadata
         )
+        del embeddings
+        gc.collect()
+        return success
     except Exception as e:
         print(f"[RAG Facade] Error indexing text for doc {document_id}: {e}")
+        traceback.print_exc()
+        gc.collect()
         return False
 
 def query_rag_engine(document_id: str, question: str, document_name: str = "Uploaded Document", debug: bool = False) -> Dict[str, Any]:
